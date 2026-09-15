@@ -1,0 +1,66 @@
+# ================================
+# Environment
+# ================================
+python-dotenv
+
+
+# ================================
+# LangChain
+# ================================
+langchain
+langchain-core
+langchain-community
+langchain-text-splitters
+langgraph
+
+
+# ================================
+# LLM Providers
+# ================================
+langchain-openai
+langchain-google-genai
+langchain-groq
+
+openai
+google-genai
+groq
+
+
+# ================================
+# RAG / Vector Database
+# ================================
+faiss-cpu
+
+# Tokenization
+tiktoken
+
+
+# ================================
+# API / Backend
+# ================================
+fastapi
+uvicorn[standard]
+
+# HTTP requests
+requests
+httpx
+
+
+# ================================
+# Data Validation
+# ================================
+pydantic
+
+
+# ================================
+# Document Processing
+# ================================
+pypdf
+beautifulsoup4
+
+
+# ================================
+# Data Handling
+# ================================
+numpy
+pandas
