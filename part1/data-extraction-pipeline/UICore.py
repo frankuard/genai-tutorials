@@ -2,7 +2,9 @@ import streamlit as st
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
-import os
+from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import BaseModel
+from typing import List, Optional
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -154,25 +156,115 @@ textarea:focus {
     display: inline-block;
 }
 
-.result-container {
-    max-height: 72vh;
-    overflow-y: auto;
-    padding-right: 0.4rem;
+/* ── Movie card ── */
+.movie-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(102,126,234,0.3);
+    border-radius: 20px;
+    padding: 1.8rem 2rem;
+    margin-bottom: 1.2rem;
+    backdrop-filter: blur(8px);
 }
 
-.result-container::-webkit-scrollbar { width: 5px; }
-.result-container::-webkit-scrollbar-track {
-    background: rgba(255,255,255,0.05);
-    border-radius: 4px;
+.movie-title-text {
+    font-size: 1.8rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #667eea 0%, #f0932b 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0 0 0.3rem 0;
 }
-.result-container::-webkit-scrollbar-thumb {
-    background: rgba(102,126,234,0.4);
-    border-radius: 4px;
+
+.movie-year {
+    color: rgba(180,180,220,0.55);
+    font-size: 1rem;
+    font-weight: 500;
+    margin-bottom: 1rem;
+}
+
+.rating-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: linear-gradient(135deg, rgba(240,147,43,0.2), rgba(240,100,43,0.2));
+    border: 1px solid rgba(240,147,43,0.45);
+    border-radius: 30px;
+    color: #f0b03b;
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 0.3rem 1rem;
+    margin-bottom: 1.2rem;
+}
+
+.info-row {
+    display: flex;
+    gap: 0.7rem;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+}
+
+.info-label {
+    color: #667eea;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    min-width: 80px;
+    padding-top: 0.08rem;
+}
+
+.info-value {
+    color: rgba(220,220,240,0.92);
+    font-size: 0.92rem;
+    line-height: 1.6;
+    flex: 1;
+}
+
+.genre-pill {
+    display: inline-block;
+    background: linear-gradient(135deg, rgba(102,126,234,0.18), rgba(118,75,162,0.18));
+    border: 1px solid rgba(102,126,234,0.35);
+    border-radius: 20px;
+    color: #a0a8ff;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.18rem 0.75rem;
+    margin: 0.15rem 0.2rem 0.15rem 0;
+}
+
+.summary-card {
+    background: rgba(102,126,234,0.07);
+    border-left: 3px solid #667eea;
+    border-radius: 0 12px 12px 0;
+    padding: 1rem 1.2rem;
+    margin-top: 1rem;
+    color: rgba(215,215,238,0.9);
+    font-size: 0.93rem;
+    line-height: 1.75;
+    font-style: italic;
+}
+
+.field-divider {
+    border: none;
+    border-top: 1px solid rgba(102,126,234,0.15);
+    margin: 0.75rem 0;
 }
 
 hr { border-color: rgba(102,126,234,0.2) !important; }
 </style>
 """, unsafe_allow_html=True)
+
+
+# ── Movie schema (mirrors core.py exactly) ─────────────────────────────────────
+class Movie(BaseModel):
+    title: str
+    release_year: Optional[int]
+    genre: List[str]
+    director: Optional[str]
+    cast: List[str]
+    rating: Optional[float]
+    summary: str
 
 
 # ── Env & cached model ──────────────────────────────────────────────────────────
@@ -183,123 +275,56 @@ def load_model():
     return init_chat_model("openai/gpt-oss-120b", model_provider="groq")
 
 
-# ── Prompt (mirrors core.py exactly) ───────────────────────────────────────────
+# ── Parser & prompt (mirrors core.py exactly) ──────────────────────────────────
+parser = PydanticOutputParser(pydantic_object=Movie)
+
 PROMPT = ChatPromptTemplate.from_messages([
     ("system", """
-You are an information extraction assistant.
-
-Analyze the following text and extract the most useful information about the movie.
-
-Provide the answer in clear, simple plain text. Do not use JSON.
-
-Include the following sections:
-
-Movie Information:
-- Movie name
-- Release year
-- Genre
-- Director
-- Writers
-- Main cast and the characters they play
-
-Story Information:
-- Main characters
-- Setting
-- Main plot
-- Important events
-- Important locations
-
-Themes:
-- Main themes explored in the movie
-
-Scientific or Technical Concepts:
-- Important scientific or technical concepts mentioned
-- Brief explanation of each concept
-
-Production Information:
-- Composer or music
-- Important collaborators
-- Other notable production details
-
-Reception:
-- Critical reception or impact mentioned in the text
-
-Quick Summary:
-- Give a short summary of the entire text in 2 to 4 sentences.
-
-Important rules:
-- Only use information provided in the text.
-- Do not invent information.
-- If something is not mentioned, say "Not mentioned."
-- Keep the information concise and easy to read.
-- Do not use JSON.
-- Do not provide unnecessary explanations.
-"""),
-    ('human', """
- Extract information from this paragraph:
-
- {paragraph}
- """)
+     Extract movie information from the paragraph
+     {format_instructions},
+     """),
+    ("human", "{paragraph}")
 ])
 
 
-# ── Section metadata ────────────────────────────────────────────────────────────
-SECTIONS = {
-    "Movie Information": "🎬",
-    "Story Information": "📖",
-    "Themes": "💡",
-    "Scientific or Technical Concepts": "🔬",
-    "Production Information": "🎵",
-    "Reception": "⭐",
-    "Quick Summary": "📝",
-}
+# ── Render the structured Movie result ─────────────────────────────────────────
+def render_movie(movie: Movie):
+    if movie.rating is not None:
+        filled = int(round(movie.rating / 2))
+        stars = "\u2605" * filled + "\u2606" * (5 - filled)
+        rating_html = f'<div class="rating-badge">{stars}&nbsp; {movie.rating}/10</div>'
+    else:
+        rating_html = ""
 
+    genre_pills = "".join(
+        f'<span class="genre-pill">{g}</span>' for g in (movie.genre or ["\u2014"])
+    )
+    cast_str = ", ".join(movie.cast) if movie.cast else "Not mentioned"
+    year_str = str(movie.release_year) if movie.release_year else "Year unknown"
 
-def parse_sections(raw: str) -> dict:
-    """Parse the LLM plain-text response into named sections."""
-    sections = {}
-    current_key = None
-    current_lines = []
-
-    for line in raw.splitlines():
-        stripped = line.strip()
-        matched = None
-        for key in SECTIONS:
-            if stripped.lower().startswith(key.lower()):
-                matched = key
-                break
-        if matched:
-            if current_key is not None:
-                sections[current_key] = "\n".join(current_lines).strip()
-            current_key = matched
-            current_lines = []
-        else:
-            if current_key is not None:
-                current_lines.append(line)
-
-    if current_key is not None:
-        sections[current_key] = "\n".join(current_lines).strip()
-
-    return sections
-
-
-def render_results(raw_text: str):
-    sections = parse_sections(raw_text)
-
-    if not sections:
-        st.markdown(f'<div class="section-card"><div class="section-body">{raw_text}</div></div>',
-                    unsafe_allow_html=True)
-        return
-
-    for name, body in sections.items():
-        icon = SECTIONS.get(name, "📌")
-        safe_body = body.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        st.markdown(f"""
-        <div class="section-card">
-          <div class="section-title">{icon}&nbsp; {name}</div>
-          <div class="section-body">{safe_body}</div>
+    st.markdown(f"""
+    <div class="movie-card">
+        <p class="movie-title-text">{movie.title}</p>
+        <p class="movie-year">&#128197; {year_str}</p>
+        {rating_html}
+        <hr class="field-divider">
+        <div class="info-row">
+            <span class="info-label">Genre</span>
+            <span class="info-value">{genre_pills}</span>
         </div>
-        """, unsafe_allow_html=True)
+        <div class="info-row">
+            <span class="info-label">Director</span>
+            <span class="info-value">{movie.director or "Not mentioned"}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Cast</span>
+            <span class="info-value">{cast_str}</span>
+        </div>
+        <hr class="field-divider">
+        <div class="summary-card">"{movie.summary}"</div>
+    </div>
+    """, unsafe_allow_html=True)
+
 
 
 # ── Sidebar ─────────────────────────────────────────────────────────────────────
@@ -313,14 +338,21 @@ with st.sidebar:
     st.markdown("""
 1. Paste a movie-related paragraph into the text area.
 2. Click **⚡ Extract Info**.
-3. View structured results on the right panel.
-4. Download results with the **⬇️ Download** button.
+3. View the structured movie card on the right.
+4. Download the raw JSON with the **⬇️ Download** button.
     """)
     st.markdown("---")
-    st.markdown("**About**")
+    st.markdown("**Output schema**")
     st.markdown("""
-Powered by a **LangChain + Groq** pipeline.
-Extracts 7 structured sections from any movie text.
+| Field | Type |
+|---|---|
+| `title` | string |
+| `release_year` | int? |
+| `genre` | list |
+| `director` | string? |
+| `cast` | list |
+| `rating` | float? |
+| `summary` | string |
     """)
     st.markdown("")
     st.markdown('<span class="tag-success">✓ Pipeline Ready</span>', unsafe_allow_html=True)
@@ -329,10 +361,10 @@ Extracts 7 structured sections from any movie text.
 # ── Hero banner ──────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="hero-banner">
-  <p class="hero-title">🎬 Movie Info Extractor</p>
+  <p class="hero-title">&#127916; Movie Info Extractor</p>
   <p class="hero-subtitle">
-    Paste any movie-related paragraph and get a fully structured breakdown —
-    cast, plot, themes, production, and more — powered by AI.
+    Paste any movie-related paragraph and get a clean structured card &mdash;
+    title, year, genre, director, cast, rating &amp; summary &mdash; powered by AI.
   </p>
 </div>
 """, unsafe_allow_html=True)
@@ -359,10 +391,9 @@ with col_in:
             "a team of astronauts who travel through a wormhole near Saturn in search of a new "
             "habitable planet for humanity, as Earth faces an extinction-level crop blight. The "
             "film explores themes of love, time, sacrifice, and human survival. Key scientific "
-            "concepts include relativity, wormholes, black holes, and time dilation, advised by "
-            "physicist Kip Thorne. Hans Zimmer composed the iconic organ-heavy score. The film "
-            "was praised for its visual effects, emotional depth, and scientific accuracy, grossing "
-            "over $700 million worldwide."
+            "concepts include relativity, wormholes, black holes, and time dilation. Hans Zimmer "
+            "composed the iconic organ-heavy score. The film was praised for its visual effects "
+            "and grossed over $700 million worldwide. IMDb rating: 8.7/10."
         )
         st.session_state["load_example"] = False
 
@@ -390,7 +421,7 @@ with col_in:
         if paragraph.strip():
             st.markdown(
                 f'<p style="color:rgba(190,190,220,0.6);font-size:0.82rem;margin-top:0.65rem;">'
-                f'📊 {word_count} words · {char_count} chars</p>',
+                f'&#128202; {word_count} words · {char_count} chars</p>',
                 unsafe_allow_html=True,
             )
 
@@ -403,7 +434,7 @@ with col_in:
 
 # ── Right: Output ────────────────────────────────────────────────────────────────
 with col_out:
-    st.markdown("### 📤 Extracted Information")
+    st.markdown("### 📤 Extracted Movie Card")
 
     if extract_btn:
         if not paragraph.strip():
@@ -412,29 +443,37 @@ with col_out:
             with st.spinner("🧠 Analyzing with AI…"):
                 try:
                     model = load_model()
-                    final_prompt = PROMPT.invoke({"paragraph": paragraph})
+                    final_prompt = PROMPT.invoke({
+                        "paragraph": paragraph,
+                        "format_instructions": parser.get_format_instructions(),
+                    })
                     response = model.invoke(final_prompt)
-                    st.session_state["result"] = response.content
+                    movie: Movie = parser.parse(response.content)
+                    st.session_state["movie"] = movie
+                    st.session_state["raw_json"] = movie.model_dump_json(indent=2)
                 except Exception as e:
                     st.error(f"❌ Extraction failed: {e}")
-                    st.session_state.pop("result", None)
+                    st.session_state.pop("movie", None)
+                    st.session_state.pop("raw_json", None)
 
-    if "result" in st.session_state:
-        raw = st.session_state["result"]
+    if "movie" in st.session_state:
+        movie: Movie = st.session_state["movie"]
+        raw_json: str = st.session_state["raw_json"]
 
         dl_col, _ = st.columns([1, 3])
         with dl_col:
             st.download_button(
-                label="⬇️ Download",
-                data=raw,
-                file_name="movie_extraction.txt",
-                mime="text/plain",
+                label="⬇️ Download JSON",
+                data=raw_json,
+                file_name="movie_extraction.json",
+                mime="application/json",
                 use_container_width=True,
             )
 
-        st.markdown('<div class="result-container">', unsafe_allow_html=True)
-        render_results(raw)
-        st.markdown("</div>", unsafe_allow_html=True)
+        render_movie(movie)
+
+        with st.expander("🔍 Raw JSON"):
+            st.code(raw_json, language="json")
     else:
         st.markdown("""
         <div style="
@@ -445,9 +484,9 @@ with col_out:
             color: rgba(180,180,220,0.45);
             margin-top: 0.5rem;
         ">
-            <p style="font-size:3rem; margin:0;">🎞️</p>
+            <p style="font-size:3rem; margin:0;">&#127902;</p>
             <p style="font-size:1rem; margin-top:0.8rem; font-weight:500;">
-                Results will appear here
+                Movie card will appear here
             </p>
             <p style="font-size:0.85rem; margin-top:0.3rem;">
                 Paste a paragraph and click <strong>⚡ Extract Info</strong>
