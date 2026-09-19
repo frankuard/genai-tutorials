@@ -28,3 +28,9 @@ news_result = search_tool.run("Latest AI news of 2026")
 result = chain.invoke({"news": news_result})
 
 print(result)
+
+
+print(search_tool.description)
+print(search_tool.name)
+print(search_tool.args)
+
