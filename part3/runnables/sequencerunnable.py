@@ -14,7 +14,7 @@ prompt = ChatPromptTemplate.from_template(
 ## Model 
 
 model = ChatGroq(
-    model ="openai/gpt-oss-120b",
+    "openai/gpt-oss-120b",
 )
 
 ## Output parser
