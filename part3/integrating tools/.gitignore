@@ -1,0 +1,11 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Ignore actual production/development environments if they contain secrets
+.env.development.local
+.env.production.local
+
+# Optional: Ensure you can still commit an example/template file
+!.env.example
