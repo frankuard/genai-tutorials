@@ -9,6 +9,9 @@ from langchain.tools import tool
 from langchain_core.messages import HumanMessage, ToolMessage
 from tavily import TavilyClient
 from rich import print
+from langchain.agents import create_agent
+from langchain.agents.middleware import wrap_tool_call
+
 # weather tool
 
 
@@ -81,55 +84,38 @@ llm = ChatGroq(
     model="openai/gpt-oss-120b"
 )
 
-tools = {
-    "get_weather": get_weather,
-    "get_news": get_news
-}   
+# @wrap_tool_call
+# def human_approval(request,handler):
+#     """Ask for human approval before every tool call."""
+#     tool_name = request.tool_call["name"]
+#     confirm = input(f"Agent wants to call '{tool_name}'. Approve? (yes/no): ")
 
-llm_with_tool = llm.bind_tools([get_weather,get_news])
+#     if confirm.lower() != "yes":
+#         return ToolMessage(
+#             content="Tool call denied by user.",
+#             tool_call_id=request.tool_call["id"]
+#         )
 
-## creating agent loop (very imporant)
+#     return handler(request)
 
-messages = []
 
-print("City intelligence System")
-print("type exit to quit")
+agent = create_agent(
+    llm,
+    tools= [get_weather,get_news],
+    system_prompt="You are a helpful city assistant",
+    # middleware=[human_approval]
+)
+
+print("City agent | type exit to quit")
 
 while True:
-    user_input= input("You: ")
+    user_input  = input("You: ")
     
     if user_input.lower() == "exit":
         break
-    messages.append(HumanMessage(content=user_input))
+    result = agent.invoke({
+        "messages": [{"role": "user", "content": user_input}]
+    })
     
-    while True:
-        result=  llm_with_tool.invoke(messages)
-        
-        messages.append(result)
-        
-        # if tool is required
-        
-        if result.tool_calls:
-            for tool_call in result.tool_calls:
-                tool_name = tool_call['name']
-                
-                # human in the loop
-                
-                confirm = input(f"Agent wants to call {tool_name} Approve (yes/no)")
-                
-                if confirm.lower == "no":
-                    print("tool call denied and I cannot get the latest information")
-                    break
-                #execute tool
-                
-                tool_result = tools[tool_name].invoke(tool_call)
-                
-                messages.append(ToolMessage(
-                    content=tool_result,
-                    tool_call_id = tool_call["id"]
-                    ))
-            continue
-        else:
-            print(result.content)
-            break
-                    
+    print("City Bot: ", result['messages'][-1].content)
+    
