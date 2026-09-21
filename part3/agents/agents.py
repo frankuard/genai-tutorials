@@ -90,3 +90,45 @@ llm_with_tool = llm.bind_tools([get_weather,get_news])
 
 ## creating agent loop (very imporant)
 
+messages = []
+
+print("City intelligence System")
+print("type exit to quit")
+
+while True:
+    user_input= input("You: ")
+    
+    if user_input.lower() == "exit":
+        break
+    messages.append(HumanMessage(content=user_input))
+    
+    while True:
+        result=  llm_with_tool.invoke(messages)
+        
+        messages.append(result)
+        
+        # if tool is required
+        
+        if result.tool_calls:
+            for tool_call in result.tool_calls:
+                tool_name = tool_call['name']
+                
+                # human in the loop
+                
+                confirm = input(f"Agent wants to call {tool_name} Approve (yes/no)")
+                
+                if confirm.lower == "no":
+                    print("tool call denied and I cannot get the latest information")
+                    break
+                #execute tool
+                
+                tool_result = tools[tool_name].invoke(tool_call)
+                
+                messages.append(ToolMessage(
+                    content=tool_result,
+                    tool_call_id = tool_call["id"]
+                    ))
+            continue
+        else:
+            print(result.content)
+                    
